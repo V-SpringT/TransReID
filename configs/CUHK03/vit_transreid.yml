@@ -1,0 +1,86 @@
+MODEL:
+  # === PRETRAINED MODEL SETTINGS ===
+  PRETRAIN_CHOICE: 'imagenet'                    # Sử dụng pretrained từ ImageNet (thay vì random init)
+  PRETRAIN_PATH: '/home/xxx/.cache/torch/checkpoints/jx_vit_base_p16_224-80ecf9dd.pth'  # Đường dẫn file pretrained ViT (cần download)
+  NAME: 'transformer'                            # Tên model: transformer (ViT-based)
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'  # Loại ViT: base model, patch 16x16, 224x224 input
+  STRIDE_SIZE: [16, 16]                          # Kích thước stride cho patch embedding
+  
+  # === LOSS FUNCTION SETTINGS ===
+  METRIC_LOSS_TYPE: 'triplet'                    # Loại loss chính: triplet loss (cho person re-ID)
+  IF_LABELSMOOTH: 'off'                          # Tắt label smoothing (không cần với triplet loss)
+  IF_WITH_CENTER: 'no'                           # Không sử dụng center loss (chỉ dùng triplet)
+  NO_MARGIN: True                                # Không sử dụng margin trong triplet loss
+  
+  # === CUHK03 SPECIFIC SETTINGS ===
+  SIE_CAMERA: True                               # BẬT SIE (Spatial-aware Identity Embedding) cho camera - QUAN TRỌNG với CUHK03 (10 camera)
+  SIE_COE: 3.0                                   # Hệ số SIE (càng cao càng chú ý đến camera)
+  JPM: True                                      # BẬT Joint Part Matching (học features từ nhiều phần cơ thể)
+  RE_ARRANGE: True                               # BẬT re-arrange features (tối ưu feature representation)
+  
+  # === HARDWARE SETTINGS ===
+  DEVICE_ID: ('0')                               # GPU ID sử dụng (GPU 0)
+
+INPUT:
+  # === IMAGE SIZE SETTINGS ===
+  SIZE_TRAIN: [256, 128]                         # Kích thước ảnh training: 256x128 (tỷ lệ 2:1 chuẩn cho person re-ID)
+  SIZE_TEST: [256, 128]                          # Kích thước ảnh test: 256x128 (giống training)
+  
+  # === DATA AUGMENTATION SETTINGS ===
+  PROB: 0.5                                      # Xác suất random horizontal flip (50% cơ hội flip ngang)
+  RE_PROB: 0.5                                   # Xác suất random erasing (50% cơ hội xóa ngẫu nhiên vùng ảnh)
+  PADDING: 10                                    # Padding khi resize ảnh (10 pixels)
+  
+  # === NORMALIZATION SETTINGS ===
+  PIXEL_MEAN: [0.5, 0.5, 0.5]                   # Mean normalization cho RGB (chuyển về [-1, 1])
+  PIXEL_STD: [0.5, 0.5, 0.5]                    # Standard deviation normalization cho RGB
+
+DATASETS:
+  # === DATASET CONFIGURATION ===
+  NAMES: ('cuhk03')                              # Tên dataset: cuhk03 (phải khớp với tên trong make_dataloader.py)
+  ROOT_DIR: ('../../data')                       # Đường dẫn gốc chứa dataset (tương đối từ thư mục config)
+
+DATALOADER:
+  # === SAMPLING STRATEGY ===
+  SAMPLER: 'softmax_triplet'                     # Sampler: kết hợp softmax loss và triplet loss
+  NUM_INSTANCE: 4                                # Số ảnh mỗi person trong 1 batch (4 ảnh/person)
+  
+  # === PARALLEL PROCESSING ===
+  NUM_WORKERS: 8                                 # Số worker song song để load dữ liệu (8 thread)
+
+SOLVER:
+  # === OPTIMIZER SETTINGS ===
+  OPTIMIZER_NAME: 'SGD'                          # Optimizer: Stochastic Gradient Descent
+  BASE_LR: 0.008                                 # Learning rate cơ bản (thấp vì dùng pretrained)
+  IMS_PER_BATCH: 64                              # Số ảnh mỗi batch (64 ảnh)
+  
+  # === TRAINING SCHEDULE ===
+  MAX_EPOCHS: 120                                # Số epoch tối đa (120 epoch)
+  WARMUP_METHOD: 'linear'                        # Phương pháp warmup: tăng LR từ từ trong vài epoch đầu
+  LARGE_FC_LR: False                             # Không tăng LR cho FC layer (giữ nguyên)
+  
+  # === REGULARIZATION ===
+  WEIGHT_DECAY: 1e-4                             # L2 regularization cho weights (tránh overfitting)
+  WEIGHT_DECAY_BIAS: 1e-4                        # L2 regularization cho bias
+  BIAS_LR_FACTOR: 2                              # LR cho bias = 2x base LR (bias học nhanh hơn)
+  
+  # === LOGGING & CHECKPOINTING ===
+  CHECKPOINT_PERIOD: 120                         # Lưu checkpoint mỗi 120 epoch
+  LOG_PERIOD: 50                                 # In log mỗi 50 iteration
+  EVAL_PERIOD: 120                               # Evaluate model mỗi 120 epoch
+
+TEST:
+  # === EVALUATION SETTINGS ===
+  EVAL: True                                     # Bật evaluation mode
+  IMS_PER_BATCH: 256                             # Batch size cho test (lớn hơn training để nhanh hơn)
+  RE_RANKING: False                              # Tắt re-ranking (không cần thiết cho CUHK03)
+  
+  # === MODEL LOADING ===
+  WEIGHT: '../logs/cuhk03_vit_transreid/transformer_120.pth'  # Đường dẫn file model đã train (epoch 120)
+  
+  # === FEATURE EXTRACTION ===
+  NECK_FEAT: 'before'                            # Lấy features từ bottleneck (trước classifier)
+  FEAT_NORM: 'yes'                               # Normalize features về unit vector (||f|| = 1)
+
+# === OUTPUT DIRECTORY ===
+OUTPUT_DIR: '../logs/cuhk03_vit_transreid'       # Thư mục lưu logs, checkpoints, và kết quả
