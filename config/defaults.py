@@ -182,6 +182,13 @@ _C.TEST.FEAT_NORM = 'yes'
 _C.TEST.DIST_MAT = "dist_mat.npy"
 # Whether calculate the eval score option: 'True', 'False'
 _C.TEST.EVAL = False
+
+# ---------------------------------------------------------------------------- #
+# Timing options
+# ---------------------------------------------------------------------------- #
+# Whether to enable timing during inference
+_C.TEST.TIMING = True
+
 # ---------------------------------------------------------------------------- #
 # Misc options
 # ---------------------------------------------------------------------------- #

@@ -1,12 +1,12 @@
 MODEL:
   PRETRAIN_CHOICE: 'imagenet'
-  PRETRAIN_PATH: '/home/heshuting/.cache/torch/checkpoints/jx_vit_base_p16_224-80ecf9dd.pth'
+  PRETRAIN_PATH: 'C:\Users\SpringT\Dropbox\MyWorld\Object_Tracking\TransReID\TransReID\pre-trained\jx_vit_base_p16_224-80ecf9dd.pth'
   METRIC_LOSS_TYPE: 'triplet'
   IF_LABELSMOOTH: 'off'
   IF_WITH_CENTER: 'no'
   NAME: 'transformer'
   NO_MARGIN: True
-  DEVICE_ID: ('5')
+  DEVICE_ID: ('0')
   TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
   STRIDE_SIZE: [12, 12]
   SIE_CAMERA: True
@@ -48,9 +48,9 @@ SOLVER:
 
 TEST:
   EVAL: True
-  IMS_PER_BATCH: 256
+  IMS_PER_BATCH: 32
   RE_RANKING: False
-  WEIGHT: ''
+  WEIGHT: 'C:\Users\SpringT\Dropbox\MyWorld\Object_Tracking\TransReID\logs\market_vit_transreid\vit_transreid_market.pth'
   NECK_FEAT: 'before'
   FEAT_NORM: 'yes'
 

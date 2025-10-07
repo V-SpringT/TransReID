@@ -54,7 +54,8 @@ class CUHK03(BaseImageDataset):
         super(CUHK03, self).__init__()
         
         # Thiết lập đường dẫn đến dataset
-        self.dataset_dir = osp.join(root, self.dataset_dir)  # data/cuhk03
+        # self.dataset_dir = osp.join(root, self.dataset_dir)  # data/cuhk03
+        self.dataset_dir = r"C:\Users\SpringT\Dropbox\MyWorld\Object_Tracking\TransReID\TransReID\data\cuhk03"  # data/cuhk03
         
         # Chọn thư mục labeled hoặc detected
         if use_labeled:
@@ -70,8 +71,16 @@ class CUHK03(BaseImageDataset):
         
         # Xử lý dữ liệu - CUHK03 không có split sẵn nên cần tạo train/query/gallery
         all_data = self._process_dir(self.data_dir, relabel=True)
+
+        # Chuẩn hóa camid toàn cục để liên tục từ 0..C-1 nhằm tương thích SIE
+        # Lý do: SIE cần kích thước embedding theo số camera cố định; nếu train/test dùng dải cam khác nhau
+        # thì sẽ dẫn đến lỗi shape/index khi test.
+        all_camids = sorted({camid for _, _, camid, _ in all_data})
+        camid2new = {camid: idx for idx, camid in enumerate(all_camids)}
+        all_data = [(img, pid, camid2new[camid], viewid) for (img, pid, camid, viewid) in all_data]
+        self.num_total_cams = len(all_camids)
         
-        # Tạo split train/query/gallery (767 train, 700 test)
+        # Tạo split train/test cân bằng đảm bảo mỗi cam xuất hiện trong train
         train, query, gallery = self._create_splits(all_data)
 
         # In thông tin dataset nếu verbose=True
@@ -185,14 +194,73 @@ class CUHK03(BaseImageDataset):
         
         # Lấy danh sách person ID và sắp xếp
         person_ids = sorted(person_images.keys())
-        
+
         # Split theo tỷ lệ 767 train, 700 test (theo chuẩn CUHK03)
         # Hoặc có thể dùng tỷ lệ 70-30
         train_ratio = 0.52  # ~767/1467
-        split_idx = int(len(person_ids) * train_ratio)
-        
-        train_pids = person_ids[:split_idx]
-        test_pids = person_ids[split_idx:]
+
+        # Phân tầng theo camera: xác định quota theo camera và chọn pid để cân bằng cam
+        # Mục tiêu: train có phân bố pid cân bằng theo từng cam, đồng thời giữ tổng số pid theo tỉ lệ train_ratio
+        # Xây map cam -> danh sách pid có xuất hiện ở cam đó
+        cam_to_pids = {}
+        pid_to_cams = {}
+        for pid in person_ids:
+            cams = {camid for _, _, camid, _ in person_images[pid]}
+            pid_to_cams[pid] = cams
+            for cam in cams:
+                cam_to_pids.setdefault(cam, []).append(pid)
+
+        # Mục tiêu tổng số pid cho train (ít nhất bằng số camera để phủ đủ cam)
+        total_train_target = int(len(person_ids) * train_ratio)
+        total_train_target = max(total_train_target, len(cam_to_pids))
+
+        # Quota cho từng camera (xấp xỉ theo tỷ lệ số pid có cam đó)
+        cam_quota = {cam: int(len(set(cam_to_pids.get(cam, []))) * train_ratio) for cam in cam_to_pids.keys()}
+
+        selected_train = set()
+
+        # PASS 1: đảm bảo mỗi cam có ≥ 1 PID trong train
+        for cam in sorted(cam_to_pids.keys()):
+            if len(selected_train) >= total_train_target:
+                break
+            for pid in cam_to_pids[cam]:
+                if pid in selected_train:
+                    continue
+                selected_train.add(pid)
+                if cam_quota.get(cam, 0) > 0:
+                    cam_quota[cam] -= 1
+                break
+
+        # PASS 2: phân bổ thêm theo quota, luân phiên qua các cam đến khi đạt tổng mục tiêu
+        cams_sorted = sorted(cam_to_pids.keys())
+        while len(selected_train) < total_train_target:
+            progressed = False
+            for cam in cams_sorted:
+                if len(selected_train) >= total_train_target:
+                    break
+                if cam_quota.get(cam, 0) <= 0:
+                    continue
+                for pid in cam_to_pids[cam]:
+                    if pid in selected_train:
+                        continue
+                    selected_train.add(pid)
+                    cam_quota[cam] -= 1
+                    progressed = True
+                    break
+            if not progressed:
+                break
+
+        # Nếu chưa đủ tổng target, bổ sung theo thứ tự pid còn lại (giữ tổng train ≈ train_ratio)
+        if len(selected_train) < total_train_target:
+            for pid in person_ids:
+                if len(selected_train) >= total_train_target:
+                    break
+                if pid in selected_train:
+                    continue
+                selected_train.add(pid)
+
+        train_pids = sorted(selected_train)
+        test_pids = sorted(set(person_ids) - selected_train)
         
         # Tạo train set
         train = []

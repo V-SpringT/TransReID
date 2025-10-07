@@ -37,7 +37,8 @@ class Market1501(BaseImageDataset):
         super(Market1501, self).__init__()
         
         # Thiết lập đường dẫn đến các thư mục con
-        self.dataset_dir = osp.join(root, self.dataset_dir)  # data/market1501
+       # self.dataset_dir = osp.join(root, self.dataset_dir)  # data/market1501
+        self.dataset_dir = r"C:\Users\SpringT\Dropbox\MyWorld\Object_Tracking\TransReID\TransReID\data\market1501" 
         self.train_dir = osp.join(self.dataset_dir, 'bounding_box_train')  # data/market1501/bounding_box_train
         self.query_dir = osp.join(self.dataset_dir, 'query')  # data/market1501/query
         self.gallery_dir = osp.join(self.dataset_dir, 'bounding_box_test')  # data/market1501/bounding_box_test

@@ -27,7 +27,10 @@ from itertools import repeat
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch._six import container_abcs
+try:
+    from torch._six import container_abcs
+except ImportError:
+    import collections.abc as container_abcs
 
 
 # From PyTorch internals
@@ -408,6 +411,9 @@ class TransReID(nn.Module):
         return x
 
     def load_param(self, model_path):
+        if not model_path or model_path == '':
+            print("No pretrained model path provided, using random initialization")
+            return
         param_dict = torch.load(model_path, map_location='cpu')
         if 'model' in param_dict:
             param_dict = param_dict['model']
