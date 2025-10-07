@@ -32,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument("opts", help="Modify config options using the command-line", default=None,
                         nargs=argparse.REMAINDER)
     parser.add_argument("--local_rank", default=0, type=int)
+    parser.add_argument("--checkpoint_url", default=None, help="URL to checkpoint file for resuming training", type=str)
     args = parser.parse_args()
 
     if args.config_file != "":
@@ -83,5 +84,6 @@ if __name__ == '__main__':
         optimizer_center,
         scheduler,
         loss_func,
-        num_query, args.local_rank
+        num_query, args.local_rank,
+        checkpoint_url=args.checkpoint_url
     )

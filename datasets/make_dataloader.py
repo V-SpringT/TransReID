@@ -13,6 +13,7 @@ import torch.distributed as dist
 from .occ_duke import OCC_DukeMTMCreID
 from .vehicleid import VehicleID
 from .veri import VeRi
+from .cuhk03 import CUHK03
 __factory = {
     'market1501': Market1501,
     'dukemtmc': DukeMTMCreID,
@@ -20,6 +21,7 @@ __factory = {
     'occ_duke': OCC_DukeMTMCreID,
     'veri': VeRi,
     'VehicleID': VehicleID,
+    'cuhk03': CUHK03,
 }
 
 def train_collate_fn(batch):
@@ -64,6 +66,8 @@ def make_dataloader(cfg):
     train_set_normal = ImageDataset(dataset.train, val_transforms)
     num_classes = dataset.num_train_pids
     cam_num = dataset.num_train_cams
+    # Ưu tiên dùng tổng số camera đã chuẩn hóa nếu có để khởi tạo SIE an toàn
+    #cam_num = getattr(dataset, 'num_total_cams', dataset.num_train_cams)
     view_num = dataset.num_train_vids
 
     if 'triplet' in cfg.DATALOADER.SAMPLER:

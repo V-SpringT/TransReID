@@ -3,10 +3,12 @@ import os
 import time
 import torch
 import torch.nn as nn
+import numpy as np
 from utils.meter import AverageMeter
 from utils.metrics import R1_mAP_eval
 from torch.cuda import amp
 import torch.distributed as dist
+import requests
 
 def do_train(cfg,
              model,
@@ -17,7 +19,8 @@ def do_train(cfg,
              optimizer_center,
              scheduler,
              loss_fn,
-             num_query, local_rank):
+             num_query, local_rank,
+             checkpoint_url=None):
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
@@ -27,6 +30,31 @@ def do_train(cfg,
 
     logger = logging.getLogger("transreid.train")
     logger.info('start training')
+    
+    # Load checkpoint từ URL nếu có
+    start_epoch = 1
+    if checkpoint_url:
+        logger.info(f'Loading checkpoint from: {checkpoint_url}')
+        try:
+            response = requests.get(checkpoint_url, timeout=30)
+            response.raise_for_status()  # Kiểm tra HTTP error
+            checkpoint = torch.load(response.content, map_location='cpu')
+            
+            if hasattr(model, 'module'):
+                model.module.load_state_dict(checkpoint)
+            else:
+                model.load_state_dict(checkpoint)
+            
+            # Nếu URL chứa "40" thì resume từ epoch 41
+            if '40' in checkpoint_url:
+                start_epoch = 41
+                logger.info('Resuming from epoch 41')
+            else:
+                logger.info('Checkpoint loaded, starting from epoch 1')
+        except Exception as e:
+            logger.error(f'Failed to load checkpoint: {e}')
+            logger.info('Continuing with fresh training from epoch 1')
+    
     _LOCAL_PROCESS_GROUP = None
     if device:
         model.to(local_rank)
@@ -39,8 +67,14 @@ def do_train(cfg,
 
     evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)
     scaler = amp.GradScaler()
+    
+    # Cập nhật scheduler nếu resume
+    if start_epoch > 1:
+        for _ in range(start_epoch - 1):
+            scheduler.step()
+    
     # train
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         start_time = time.time()
         loss_meter.reset()
         acc_meter.reset()
@@ -153,21 +187,56 @@ def do_inference(cfg,
 
     model.eval()
     img_path_list = []
+    
+    # Simple timing variables
+    forward_times = []
 
     for n_iter, (img, pid, camid, camids, target_view, imgpath) in enumerate(val_loader):
         with torch.no_grad():
             img = img.to(device)
             camids = camids.to(device)
             target_view = target_view.to(device)
+            
+            # Measure forward pass time (simple)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            start_time = time.time()
+            
             feat = model(img, cam_label=camids, view_label=target_view)
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            end_time = time.time()
+            
+            forward_time = end_time - start_time
+            forward_times.append(forward_time)
+            
             evaluator.update((feat, pid, camid))
             img_path_list.extend(imgpath)
 
     cmc, mAP, _, _, _, _, _ = evaluator.compute()
+    
     logger.info("Validation Results ")
     logger.info("mAP: {:.1%}".format(mAP))
     for r in [1, 5, 10]:
         logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+    
+    # Simple timing results
+    if cfg.TEST.TIMING and forward_times:
+        min_time = np.min(forward_times)
+        max_time = np.max(forward_times)
+        mean_time = np.mean(forward_times)
+        fps = 1.0 / mean_time
+        
+        logger.info("=" * 40)
+        logger.info("INFERENCE TIME")
+        logger.info("=" * 40)
+        logger.info("Min time:  {:.4f}s ({:.1f}ms)".format(min_time, min_time*1000))
+        logger.info("Max time:  {:.4f}s ({:.1f}ms)".format(max_time, max_time*1000))
+        logger.info("Mean time: {:.4f}s ({:.1f}ms)".format(mean_time, mean_time*1000))
+        logger.info("FPS:       {:.1f}".format(fps))
+        logger.info("=" * 40)
+    
     return cmc[0], cmc[4]
 
 
